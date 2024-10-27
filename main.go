@@ -23,6 +23,13 @@ type Employee struct {
 	Address     string `json:"address"`
 }
 
+type Product struct {
+	Id          int    `json:"id"`
+	Name        string `json:"name"`
+	Price int `json:"price"`
+	Unit     string `json:"unit"`
+}
+
 var db = config.ConnectDB()
 
 func main() {
@@ -44,6 +51,11 @@ func main() {
 		Employee.POST("/", createEmployee)
 		Employee.PUT("/:id", updateEmployee)
 		Employee.DELETE("/:id", deleteEmployee)
+	}
+
+	Product := router.Group("/products")
+	{
+		Product.POST("/", createProduct)
 	}
 
 
@@ -272,5 +284,28 @@ func deleteEmployee(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Employee deleted successfully", "data": "OK"})
 }
+
+func createProduct(c *gin.Context) {
+	var product Product
+	err := c.ShouldBind(&product)
+
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	query := "INSERT INTO Products (name, price, unit) VALUES ($1, $2, $3) RETURNING id"
+
+	var id int
+	err = db.QueryRow(query, product.Name, product.Price, product.Unit).Scan(&id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create product"})
+		return
+	}
+
+	product.Id = id
+	c.JSON(http.StatusCreated, gin.H{"message": "Product created", "data": product})
+}
+
 
 
