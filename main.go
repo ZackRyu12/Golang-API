@@ -38,9 +38,12 @@ func main() {
 		Customer.DELETE("/:id", DeleteCustomer)
 	}
 
-	Employee := router.Group("/worker")
+	Employee := router.Group("/employees")
 	{
+		Employee.GET("/:id", getEmployee)
 		Employee.POST("/", createEmployee)
+		Employee.PUT("/:id", updateEmployee)
+		Employee.DELETE("/:id", deleteEmployee)
 	}
 
 
@@ -94,7 +97,7 @@ func getCustomers(c *gin.Context) {
 	}
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve worker"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve customer"})
 		return
 	}
 	defer rows.Close()
@@ -181,3 +184,93 @@ func createEmployee(c *gin.Context) {
 	worker.Id = id
 	c.JSON(http.StatusCreated, gin.H{"message": "Employees created", "data": worker})
 }
+
+func getEmployee(c *gin.Context) {
+	id := c.Param("id")
+
+	if id != "" {
+		if _, err := strconv.Atoi(id); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid employee ID"})
+			return
+		}
+	}
+
+	query := "SELECT id, name, phonenumber, address FROM Employees"
+	var rows *sql.Rows
+	var err error
+
+	if id != "" {
+		query += " WHERE id = $1"
+		rows, err = db.Query(query, id)
+	} else {
+		rows, err = db.Query(query)
+	}
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve worker"})
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var employee Employee
+		if err := rows.Scan(&employee.Id, &employee.Name, &employee.PhoneNumber, &employee.Address); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse employee data"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "Employee retrieved", "data": employee})
+	}
+}
+
+func updateEmployee(c *gin.Context) {
+	id := c.Param("id")
+	var worker Employee
+
+	if err := c.ShouldBindJSON(&worker); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input data"})
+		return
+	}
+
+	query := `UPDATE Employees SET name = $1, phoneNumber = $2, address = $3 WHERE id = $4`
+	result, err := db.Exec(query, worker.Name, worker.PhoneNumber, worker.Address, id)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update employee"})
+		return
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil || rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Employee not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Employee updated successfully", "data": worker})
+}
+
+func deleteEmployee(c *gin.Context) {
+	id := c.Param("id")
+
+	query := "DELETE FROM Employees WHERE id = $1"
+	result, err := db.Exec(query, id)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete employee"})
+		return
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to confirm deletion"})
+		return
+	}
+
+	if rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Employee not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Employee deleted successfully", "data": "OK"})
+}
+
+
