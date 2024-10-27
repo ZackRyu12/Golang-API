@@ -24,10 +24,26 @@ type Employee struct {
 }
 
 type Product struct {
-	Id          int    `json:"id"`
-	Name        string `json:"name"`
-	Price int `json:"price"`
-	Unit     string `json:"unit"`
+	Id    int    `json:"id"`
+	Name  string `json:"name"`
+	Price int    `json:"price"`
+	Unit  string `json:"unit"`
+}
+
+type TransactionRequest struct {
+	BillDate    string       `json:"billDate"`
+	EntryDate   string       `json:"entryDate"`
+	FinishDate  string       `json:"finishDate"`
+	EmployeeId  string       `json:"employeeId"`
+	CustomerId  string       `json:"customerId"`
+	BillDetails []BillDetail `json:"billDetails"`
+}
+
+type BillDetail struct {
+	ID           string `json:"id"`
+	ProductId    string `json:"productId"`
+	ProductPrice int    `json:"productPrice"`
+	Qty          int    `json:"qty"`
 }
 
 var db = config.ConnectDB()
@@ -62,6 +78,10 @@ func main() {
 		Product.DELETE("/:id", deleteProduct)
 	}
 
+	Transaction := router.Group("/transaction")
+	{
+		Transaction.POST("/", createTransaction)
+	}
 
 	err := router.Run(":8080")
 	if err != nil {
@@ -319,7 +339,7 @@ func getAllProduct(c *gin.Context) {
 	var rows *sql.Rows
 	var err error
 
-	if searchName != ""{
+	if searchName != "" {
 		query += " WHERE name ILIKE '%' || $1 || '%'"
 		rows, err = db.Query(query, searchName)
 	} else {
@@ -327,7 +347,7 @@ func getAllProduct(c *gin.Context) {
 	}
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error":"Failed to retrieve products"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve products"})
 		return
 	}
 	defer rows.Close()
@@ -337,7 +357,7 @@ func getAllProduct(c *gin.Context) {
 		var product Product
 		err := rows.Scan(&product.Id, &product.Name, &product.Price, &product.Unit)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error":"Failed to parse product data"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse product data"})
 			return
 		}
 		matchedProduct = append(matchedProduct, product)
@@ -346,7 +366,7 @@ func getAllProduct(c *gin.Context) {
 	if len(matchedProduct) > 0 {
 		c.JSON(http.StatusOK, gin.H{"message": "Product retrieved", "data": matchedProduct})
 	} else {
-		c.JSON(http.StatusNotFound, gin.H{"error":"Product not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Product not found"})
 	}
 }
 
@@ -428,4 +448,83 @@ func deleteProduct(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Product deleted successfully", "data": "OK"})
+}
+
+func createTransaction(c *gin.Context) {
+	var transaction TransactionRequest
+
+	// Parsing input dari body request
+	if err := c.ShouldBindJSON(&transaction); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input data"})
+		return
+	}
+
+	// Mulai transaksi database
+	tx, err := db.Begin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to begin transaction"})
+		return
+	}
+
+	// Insert data ke tabel transactions
+	queryTransaction := "INSERT INTO transactions (billDate, entryDate, finishDate, employeeId, customerId) VALUES ($1, $2, $3, $4, $5) RETURNING id"
+	var transactionID string
+	err = tx.QueryRow(queryTransaction, transaction.BillDate, transaction.EntryDate, transaction.FinishDate, transaction.EmployeeId, transaction.CustomerId).Scan(&transactionID)
+	if err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create transaction"})
+		return
+	}
+
+	// Insert data ke tabel bill_details
+	for _, detail := range transaction.BillDetails {
+		queryBillDetail := `
+			INSERT INTO bill_details (billId, productId, qty)
+			VALUES ($1, $2, $3) RETURNING id, productPrice`
+		var billDetailID string
+		// Dapatkan harga produk dari tabel Products
+		var productPrice int
+		err = tx.QueryRow("SELECT price FROM Products WHERE id = $1", detail.ProductId).Scan(&productPrice)
+		if err != nil {
+			tx.Rollback()
+			if err == sql.ErrNoRows {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Product not found"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve product price", "details": err.Error()})
+			}
+			return
+		}
+
+		// Insert ke tabel bill_details
+		queryBillDetail = "INSERT INTO bill_details (billId, productId, qty, productPrice) VALUES ($1, $2, $3, $4) RETURNING id"
+		err = tx.QueryRow(queryBillDetail, transactionID, detail.ProductId, detail.Qty, productPrice).Scan(&billDetailID)
+		if err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create bill detail", "details": err.Error()})
+			return
+		}
+
+		detail.ID = billDetailID
+		detail.ProductPrice = productPrice
+	}
+
+	// Commit transaksi jika semuanya sukses
+	if err := tx.Commit(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to commit transaction"})
+		return
+	}
+
+	// Mengembalikan respons sukses
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "Transaction created",
+		"data": gin.H{
+			"id":          transactionID,
+			"billDate":    transaction.BillDate,
+			"entryDate":   transaction.EntryDate,
+			"finishDate":  transaction.FinishDate,
+			"employeeId":  transaction.EmployeeId,
+			"customerId":  transaction.CustomerId,
+			"billDetails": transaction.BillDetails,
+		},
+	})
 }
