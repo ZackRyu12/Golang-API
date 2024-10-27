@@ -8,6 +8,6 @@ CREATE TABLE Employees (
 CREATE TABLE Products (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
-    price NUMERIC(20, 2) NOT NULL,
-    address VARCHAR(255) NOT NULL
+    price INTEGER NOT NULL,
+    unit VARCHAR(255) NOT NULL
 );

@@ -56,6 +56,10 @@ func main() {
 	Product := router.Group("/products")
 	{
 		Product.POST("/", createProduct)
+		Product.GET("/", getAllProduct)
+		Product.GET("/:id", getProductByID)
+		Product.PUT("/:id", updateProduct)
+		Product.DELETE("/:id", deleteProduct)
 	}
 
 
@@ -307,5 +311,121 @@ func createProduct(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"message": "Product created", "data": product})
 }
 
+func getAllProduct(c *gin.Context) {
+	searchName := c.Query("name")
 
+	query := "SELECT id, name, price, unit FROM Products"
 
+	var rows *sql.Rows
+	var err error
+
+	if searchName != ""{
+		query += " WHERE name ILIKE '%' || $1 || '%'"
+		rows, err = db.Query(query, searchName)
+	} else {
+		rows, err = db.Query(query)
+	}
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error":"Failed to retrieve products"})
+		return
+	}
+	defer rows.Close()
+
+	var matchedProduct []Product
+	for rows.Next() {
+		var product Product
+		err := rows.Scan(&product.Id, &product.Name, &product.Price, &product.Unit)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error":"Failed to parse product data"})
+			return
+		}
+		matchedProduct = append(matchedProduct, product)
+	}
+
+	if len(matchedProduct) > 0 {
+		c.JSON(http.StatusOK, gin.H{"message": "Product retrieved", "data": matchedProduct})
+	} else {
+		c.JSON(http.StatusNotFound, gin.H{"error":"Product not found"})
+	}
+}
+
+func getProductByID(c *gin.Context) {
+	id := c.Param("id")
+
+	// Validasi ID agar memastikan hanya berupa angka
+	if _, err := strconv.Atoi(id); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid product ID"})
+		return
+	}
+
+	// Query untuk mendapatkan produk berdasarkan ID
+	query := "SELECT id, name, price, unit FROM Products WHERE id = $1"
+	var product Product
+
+	// Menggunakan QueryRow karena kita hanya mengharapkan satu hasil
+	err := db.QueryRow(query, id).Scan(&product.Id, &product.Name, &product.Price, &product.Unit)
+	if err != nil {
+		// Mengembalikan pesan error yang sesuai jika produk tidak ditemukan
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Product not found"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve product"})
+		}
+		return
+	}
+
+	// Mengembalikan respons sukses jika produk ditemukan
+	c.JSON(http.StatusOK, gin.H{"message": "Product retrieved", "data": product})
+}
+
+func updateProduct(c *gin.Context) {
+	id := c.Param("id")
+	var product Product
+
+	if err := c.ShouldBindJSON(&product); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input data"})
+		return
+	}
+
+	query := `UPDATE Products SET name = $1, price = $2, unit = $3 WHERE id = $4`
+	result, err := db.Exec(query, product.Name, product.Price, product.Unit, id)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update product"})
+		return
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil || rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Product not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Product updated successfully", "data": product})
+}
+
+func deleteProduct(c *gin.Context) {
+	id := c.Param("id")
+
+	query := "DELETE FROM Products WHERE id = $1"
+	result, err := db.Exec(query, id)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete product"})
+		return
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to confirm deletion"})
+		return
+	}
+
+	if rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Product not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Product deleted successfully", "data": "OK"})
+}
