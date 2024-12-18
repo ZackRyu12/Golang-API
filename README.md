@@ -1,35 +1,52 @@
-# Aplikasi Enigma Laundry
+# Aplikasi Laundry
 
 ### Deskripsi
 
-Setelah menyelesaikan pembelajaran tentang Go API, Anda ditugaskan oleh manajemen Enigma Laundry (EL) untuk membuat sebuah aplikasi sederhana berbasis API untuk mencatat transaksi di tokonya.
-
-![logo](./asset/Enigma-Laundry.png)
-
-Fitur-fitur yang diminta oleh manajemen EL adalah:
-
-1.  Struktur/Design Database yang memenuhi kaidah normalisasi berdasarkan nota dibawah ini dengan kriteria sbb :
-
-        - Hasil design dalam bentuk file Script DDL Postgre SQL
-        - Design database minimal memiliki 2 tabel master dan 1 tabel transaksi
-        - Sediakan sample data dalam bentuk Script DML Postgre SQL
-
-2.  Aplikasi berbasis API menggunakan bahasa pemrograman Golang dengan kriteria sbb :
-
-        - Aplikasi memiliki fitur untuk melakukan GET, POST, PUT, dan DELETE pada tabel master
-          1. Manajemen Customer
-          2. Manajemen Produk
-          3. Manajemen Employee
-        - Aplikasi memiliki fitur untuk melakukan GET dan POST pada table Transaksi
-          1. Manajemen Transaksi
-        - Setiap fitur master wajib memiliki minimal 2 jenis validasi yang berbeda
-        - Setiap transaksi master wajib memiliki minimal 4 jenis validasi yang berbeda
-
-3.  Dokumentasi cara menjalankan aplikasi dan penggunaan aplikasi dalam bentuk readme.md atau dokumen ektensi word atau pdf
-
+This repository contains a Laundry Service Management Application developed using Go (Golang) and the Gin framework. It allows managing customers, employees, products, and transactions for a laundry service.
 ---
 
-## API Spec
+### Features
+- Manage Customers (CRUD operations)
+
+- Manage Employees (CRUD operations)
+
+- Manage Products (CRUD operations)
+
+- Manage Transactions
+
+  - Create transactions
+
+  - Retrieve transaction details
+
+  - List transactions with optional filters (date range and product name)
+
+
+### Requirements
+- Go(version 1.18 or later)
+- PostgreSQL database
+- Git
+
+## Installation
+
+1. Clone The Repository:
+```cmd 
+git clone https://github.com/my-username/laundry-service.git
+```
+2. Set Up the Database:
+- Install PostgreSQL and create a database.
+- Update the config.ConnectDB function in the config package with your database connection settings.
+3. install Dependencies:
+```go
+  go mod tidy
+```
+4. Run the Application:
+```go 
+go run .
+```
+5. Access the API: The application will run on http://localhost:8080 by default.
+
+## API Documentation
+Use tools like Postman or cURL to test API endpoints
 
 ### Customer API
 
@@ -37,12 +54,7 @@ Fitur-fitur yang diminta oleh manajemen EL adalah:
 
 Request :
 
-- Method : `POST`
-- Endpoint : `/customers`
-- Header :
-  - Content-Type : application/json
-  - Accept : application/json
-- Body :
+POST /customers
 
 ```json
 {
@@ -53,9 +65,6 @@ Request :
 ```
 
 Response :
-
-- Status : 201 Created
-- Body :
 
 ```json
 {
@@ -70,18 +79,9 @@ Response :
 ```
 
 #### Get Customer
-
-Request :
-
-- Method : GET
-- Endpoint : `/customers/:id`
-- Header :
-  - Accept : application/json
+GET /customers/:id
 
 Response :
-
-- Status : 200 OK
-- Body :
 
 ```json
 {
@@ -96,16 +96,9 @@ Response :
 ```
 
 #### Update Customer
+PUT /customers/id
 
 Request :
-
-- Method : PUT
-- Endpoint : `/customers/:id`
-- Header :
-  - Content-Type : application/json
-  - Accept : application/json
-- Body :
-
 ```json
 {
   "name": "string",
@@ -115,10 +108,6 @@ Request :
 ```
 
 Response :
-
-- Status : 200 OK
-- Body :
-
 ```json
 {
   "message": "string",
@@ -135,16 +124,9 @@ Response :
 
 Request :
 
-- Method : DELETE
-- Endpoint : `/customers/:id`
-- Header :
-  - Accept : application/json
-- Body :
+DELETE /customers/:id
 
 Response :
-
-- Status : 200 OK
-- Body :
 
 ```json
 {
@@ -159,13 +141,7 @@ Response :
 
 Request :
 
-- Method : `POST`
-- Endpoint : `/employees`
-- Header :
-  - Content-Type : application/json
-  - Accept : application/json
-- Body :
-
+POST /employees
 ```json
 {
   "name": "string",
@@ -175,9 +151,6 @@ Request :
 ```
 
 Response :
-
-- Status : 201 Created
-- Body :
 
 ```json
 {
@@ -195,10 +168,7 @@ Response :
 
 Request :
 
-- Method : GET
-- Endpoint : `/employees/:id`
-- Header :
-  - Accept : application/json
+GET /employees/:id 
 
 Response :
 
@@ -221,13 +191,7 @@ Response :
 
 Request :
 
-- Method : PUT
-- Endpoint : `/employees/:id`
-- Header :
-  - Content-Type : application/json
-  - Accept : application/json
-- Body :
-
+PUT employees/:id
 ```json
 {
   "name": "string",
@@ -237,9 +201,6 @@ Request :
 ```
 
 Response :
-
-- Status : 200 OK
-- Body :
 
 ```json
 {
@@ -257,16 +218,10 @@ Response :
 
 Request :
 
-- Method : DELETE
-- Endpoint : `/employees/:id`
-- Header :
-  - Accept : application/json
-- Body :
+DELETE /employees/:id
 
 Response :
 
-- Status : 200 OK
-- Body :
 
 ```json
 {
@@ -281,12 +236,7 @@ Response :
 
 Request :
 
-- Method : POST
-- Endpoint : `/products`
-- Header :
-  - Content-Type : application/json
-  - Accept : application/json
-- Body :
+POST /products
 
 ```json
 {
@@ -298,8 +248,6 @@ Request :
 
 Response :
 
-- Status Code: 201 Created
-- Body:
 
 ```json
 {
@@ -317,17 +265,9 @@ Response :
 
 Request :
 
-- Method : GET
-- Endpoint : `/products`
-  - Header :
-  - Accept : application/json
-- Query Param :
-  - productName : string `optional`,
+GET /products
 
 Response :
-
-- Status Code : 200 OK
-- Body:
 
 ```json
 {
@@ -353,15 +293,10 @@ Response :
 
 Request :
 
-- Method : GET
-- Endpoint : `/products/:id`
-- Header :
-  - Accept : application/json
+GET /products/:id
 
 Response :
 
-- Status Code: 200 OK
-- Body :
 
 ```json
 {
@@ -379,12 +314,7 @@ Response :
 
 Request :
 
-- Method : PUT
-- Endpoint : `/products/:id`
-- Header :
-  - Content-Type : application/json
-  - Accept : application/json
-- Body :
+PUT /products/:id
 
 ```json
 {
@@ -395,9 +325,6 @@ Request :
 ```
 
 Response :
-
-- Status Code: 200 OK
-- Body :
 
 ```json
 {
@@ -415,11 +342,7 @@ Response :
 
 Request :
 
-- Method : DELETE
-- Endpoint : `/products/:id`
-- Header :
-  - Accept : application/json
-- Body :
+DELETE products/:id
 
 Response :
 
@@ -439,12 +362,7 @@ Response :
 
 Request :
 
-- Method : POST
-- Endpoint : `/transactions`
-- Header :
-  - Content-Type : application/json
-  - Accept : application/json
-- Body :
+POST /transactions
 
 ```json
 {
@@ -463,9 +381,6 @@ Request :
 ```
 
 Request :
-
-- Status Code: 201 Created
-- Body :
 
 ```json
 {
@@ -494,11 +409,7 @@ Request :
 
 Request :
 
-- Method : GET
-- Endpoint : `/transactions/:id_bill`
-- Header :
-  - Accept : application/json
-- Body :
+GET /transactions/:id_bill
 
 Response :
 
@@ -546,24 +457,14 @@ Response :
 
 #### List Transaction
 
-Pattern string date : `dd-MM-yyyy`
-
 Request :
 
-- Method : GET
-- Endpoint : `/transactions`
-- Header :
-  - Accept : application/json
-- Query Param :
-  - startDate : string `optional`
-  - endDate : string `optional`
-  - productName : string `optional`
-- Body :
+GET /transactions?startDate=DATE&endDate=DATE&productName=Product_name" for specific data relating to start time, end time, and product name 
+
+GET/transactions for all data
+
 
 Response :
-
-- Status Code: 200 OK
-- Body :
 
 ```json
 {

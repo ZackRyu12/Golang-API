@@ -74,7 +74,7 @@ func main() {
 	Customer := router.Group("/Customers")
 	{
 		Customer.GET("/:id", getCustomers)
-		Customer.POST("/", create_Customer)
+		Customer.POST("", create_Customer)
 		Customer.PUT("/:id", UpdateCustomer)
 		Customer.DELETE("/:id", DeleteCustomer)
 	}
@@ -82,14 +82,14 @@ func main() {
 	Employee := router.Group("/employees")
 	{
 		Employee.GET("/:id", getEmployee)
-		Employee.POST("/", createEmployee)
+		Employee.POST("", createEmployee)
 		Employee.PUT("/:id", updateEmployee)
 		Employee.DELETE("/:id", deleteEmployee)
 	}
 
 	Product := router.Group("/products")
 	{
-		Product.POST("/", createProduct)
+		Product.POST("", createProduct)
 		Product.GET("/", getAllProduct)
 		Product.GET("/:id", getProductByID)
 		Product.PUT("/:id", updateProduct)
@@ -98,7 +98,7 @@ func main() {
 
 	Transaction := router.Group("/transaction")
 	{
-		Transaction.POST("/", createTransaction)
+		Transaction.POST("", createTransaction)
 		Transaction.GET("/:id_bill", getTransaction)
 		Transaction.GET("", listTransactions)
 	}
