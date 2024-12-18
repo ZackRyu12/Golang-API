@@ -30,19 +30,37 @@ type Product struct {
 	Unit  string `json:"unit"`
 }
 
-type TransactionRequest struct {
-	BillDate    string       `json:"billDate"`
-	EntryDate   string       `json:"entryDate"`
-	FinishDate  string       `json:"finishDate"`
-	EmployeeId  string       `json:"employeeId"`
-	CustomerId  string       `json:"customerId"`
+type Transaction struct {
+	ID         string       `json:"id"`
+	BillDate   string       `json:"billDate"`
+	EntryDate  string       `json:"entryDate"`
+	FinishDate string       `json:"finishDate"`
+	Employee   Employee     `json:"employee"`
+	Customer   Customers     `json:"customer"`
 	BillDetails []BillDetail `json:"billDetails"`
+	TotalBill  int          `json:"totalBill"`
 }
 
-type BillDetail struct {
+type TransactionCreate struct {
+	BillDate   string       `json:"billDate"`
+	EntryDate  string       `json:"entryDate"`
+	FinishDate string       `json:"finishDate"`
+	EmployeeId   string     `json:"employeeId"`
+	CustomerId   string     `json:"customerId"`
+	BillDetails []BillDetailCreate `json:"billDetails"`
+}
+
+type BillDetailCreate struct {
 	ID           string `json:"id"`
 	ProductId    string `json:"productId"`
 	ProductPrice int    `json:"productPrice"`
+	Qty          int    `json:"qty"`
+}
+type BillDetail struct {
+	ID           string `json:"id"`
+	BillID string `json:"billId"`
+	Product Product `json:"product"`
+	ProductPrice int `json:"productPrice"`
 	Qty          int    `json:"qty"`
 }
 
@@ -81,6 +99,8 @@ func main() {
 	Transaction := router.Group("/transaction")
 	{
 		Transaction.POST("/", createTransaction)
+		Transaction.GET("/:id_bill", getTransaction)
+		Transaction.GET("", listTransactions)
 	}
 
 	err := router.Run(":8080")
@@ -451,40 +471,31 @@ func deleteProduct(c *gin.Context) {
 }
 
 func createTransaction(c *gin.Context) {
-	var transaction TransactionRequest
+	var transaction TransactionCreate
 
-	// Parsing input dari body request
 	if err := c.ShouldBindJSON(&transaction); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input data"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input data", "details": err.Error()})
 		return
 	}
 
-	// Mulai transaksi database
 	tx, err := db.Begin()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to begin transaction"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to begin transaction", "details": err.Error()})
 		return
 	}
 
-	// Insert data ke tabel transactions
-	queryTransaction := "INSERT INTO transactions (billDate, entryDate, finishDate, employeeId, customerId) VALUES ($1, $2, $3, $4, $5) RETURNING id"
+	queryTransaction := "INSERT INTO transactions (bill_date, entry_date, finish_date, employee_id, customer_id) VALUES ($1, $2, $3, $4, $5) RETURNING id"
 	var transactionID string
 	err = tx.QueryRow(queryTransaction, transaction.BillDate, transaction.EntryDate, transaction.FinishDate, transaction.EmployeeId, transaction.CustomerId).Scan(&transactionID)
 	if err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create transaction"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create transaction", "details": err.Error()})
 		return
 	}
 
-	// Insert data ke tabel bill_details
-	for _, detail := range transaction.BillDetails {
-		queryBillDetail := `
-			INSERT INTO bill_details (billId, productId, qty)
-			VALUES ($1, $2, $3) RETURNING id, productPrice`
-		var billDetailID string
-		// Dapatkan harga produk dari tabel Products
+	for i, detail := range transaction.BillDetails {
 		var productPrice int
-		err = tx.QueryRow("SELECT price FROM Products WHERE id = $1", detail.ProductId).Scan(&productPrice)
+		err = tx.QueryRow("SELECT price FROM products WHERE id = $1", detail.ProductId).Scan(&productPrice)
 		if err != nil {
 			tx.Rollback()
 			if err == sql.ErrNoRows {
@@ -495,8 +506,8 @@ func createTransaction(c *gin.Context) {
 			return
 		}
 
-		// Insert ke tabel bill_details
-		queryBillDetail = "INSERT INTO bill_details (billId, productId, qty, productPrice) VALUES ($1, $2, $3, $4) RETURNING id"
+		queryBillDetail := "INSERT INTO bill_details (bill_id, product_id, qty, product_price) VALUES ($1, $2, $3, $4) RETURNING id"
+		var billDetailID string
 		err = tx.QueryRow(queryBillDetail, transactionID, detail.ProductId, detail.Qty, productPrice).Scan(&billDetailID)
 		if err != nil {
 			tx.Rollback()
@@ -504,17 +515,15 @@ func createTransaction(c *gin.Context) {
 			return
 		}
 
-		detail.ID = billDetailID
-		detail.ProductPrice = productPrice
+		transaction.BillDetails[i].ID = billDetailID
+		transaction.BillDetails[i].ProductPrice = productPrice
 	}
 
-	// Commit transaksi jika semuanya sukses
 	if err := tx.Commit(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to commit transaction"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to commit transaction", "details": err.Error()})
 		return
 	}
 
-	// Mengembalikan respons sukses
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Transaction created",
 		"data": gin.H{
@@ -526,5 +535,229 @@ func createTransaction(c *gin.Context) {
 			"customerId":  transaction.CustomerId,
 			"billDetails": transaction.BillDetails,
 		},
+	})
+}
+
+func getTransaction(c *gin.Context) {
+	idBill := c.Param("id_bill")
+
+	// Data transaksi utama
+	var transaction Transaction
+
+	// Query transaction data
+	queryTransaction := `
+		SELECT id, bill_date, entry_date, finish_date, employee_id, customer_id
+		FROM transactions
+		WHERE id = $1`
+	err := db.QueryRow(queryTransaction, idBill).Scan(
+		&transaction.ID,
+		&transaction.BillDate,
+		&transaction.EntryDate,
+		&transaction.FinishDate,
+		&transaction.Employee.Id,
+		&transaction.Customer.Id,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"message": "Transaction not found"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to fetch transaction", "details": err.Error()})
+		}
+		return
+	}
+
+	// Query employee data
+	queryEmployee := `
+		SELECT id, name, phonenumber, address
+		FROM employees
+		WHERE id = $1`
+	err = db.QueryRow(queryEmployee, transaction.Employee.Id).Scan(
+		&transaction.Employee.Id,
+		&transaction.Employee.Name,
+		&transaction.Employee.PhoneNumber,
+		&transaction.Employee.Address,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to fetch employee data", "details": err.Error()})
+		return
+	}
+
+	// Query customer data
+	queryCustomer := `
+		SELECT id, name, phonenumber, address
+		FROM customers
+		WHERE id = $1`
+	err = db.QueryRow(queryCustomer, transaction.Customer.Id).Scan(
+		&transaction.Customer.Id,
+		&transaction.Customer.Name,
+		&transaction.Customer.PhoneNumber,
+		&transaction.Customer.Address,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to fetch customer data", "details": err.Error()})
+		return
+	}
+
+	// Query bill details
+	queryBillDetails := `
+		SELECT bd.id, bd.bill_id, bd.product_price, bd.qty,
+		       p.id AS product_id, p.name AS product_name, p.price AS product_price, p.unit
+		FROM bill_details bd
+		JOIN products p ON bd.product_id = p.id
+		WHERE bd.bill_id = $1`
+	rows, err := db.Query(queryBillDetails, idBill)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to fetch bill details", "details": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	// Proses hasil query bill details
+	var totalBill int
+	for rows.Next() {
+		var detail BillDetail
+		err = rows.Scan(
+			&detail.ID,
+			&detail.BillID,
+			&detail.ProductPrice,
+			&detail.Qty,
+			&detail.Product.Id,
+			&detail.Product.Name,
+			&detail.Product.Price,
+			&detail.Product.Unit,
+		)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to parse bill details", "details": err.Error()})
+			return
+		}
+		transaction.BillDetails = append(transaction.BillDetails, detail)
+		totalBill += detail.ProductPrice * detail.Qty
+	}
+	transaction.TotalBill = totalBill
+
+	// Response JSON
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Transaction retrieved successfully",
+		"data":    transaction,
+	})
+}
+
+func listTransactions(c *gin.Context) {
+	startDate := c.DefaultQuery("startDate", "")
+	endDate := c.DefaultQuery("endDate", "")
+	productName := c.DefaultQuery("productName", "")
+
+	query := `
+		SELECT t.id, t.bill_date, t.entry_date, t.finish_date, t.employee_id, t.customer_id
+		FROM transactions t
+		LEFT JOIN bill_details bd ON t.id = bd.bill_id
+		LEFT JOIN products p ON bd.product_id = p.id
+		WHERE 1=1`
+	
+	var params []interface{}
+	
+	if startDate != "" {
+		query += " AND t.bill_date >= $1"
+		params = append(params, startDate)
+	}
+	if endDate != "" {
+		query += " AND t.bill_date <= $2"
+		params = append(params, endDate)
+	}
+
+	if productName != "" {
+		query += " AND p.name ILIKE $3"
+		params = append(params, "%"+productName+"%")
+	}
+
+	rows, err := db.Query(query, params...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to fetch transactions", "details": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var transactions []Transaction
+	for rows.Next() {
+		var transaction Transaction
+		err = rows.Scan(
+			&transaction.ID,
+			&transaction.BillDate,
+			&transaction.EntryDate,
+			&transaction.FinishDate,
+			&transaction.Employee.Id,
+			&transaction.Customer.Id,
+		)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to parse transaction data", "details": err.Error()})
+			return
+		}
+
+		err = db.QueryRow(`
+			SELECT id, name, phonenumber, address
+			FROM employees WHERE id = $1`, transaction.Employee.Id).Scan(
+			&transaction.Employee.Id,
+			&transaction.Employee.Name,
+			&transaction.Employee.PhoneNumber,
+			&transaction.Employee.Address,
+		)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to fetch employee data", "details": err.Error()})
+			return
+		}
+
+		err = db.QueryRow(`
+			SELECT id, name, phonenumber, address
+			FROM customers WHERE id = $1`, transaction.Customer.Id).Scan(
+			&transaction.Customer.Id,
+			&transaction.Customer.Name,
+			&transaction.Customer.PhoneNumber,
+			&transaction.Customer.Address,
+		)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to fetch customer data", "details": err.Error()})
+			return
+		}
+
+		detailsRows, err := db.Query(`
+			SELECT bd.id, bd.bill_id, bd.product_price, bd.qty,
+			       p.id AS product_id, p.name AS product_name, p.price AS product_price, p.unit
+			FROM bill_details bd
+			JOIN products p ON bd.product_id = p.id
+			WHERE bd.bill_id = $1`, transaction.ID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to fetch bill details", "details": err.Error()})
+			return
+		}
+		defer detailsRows.Close()
+
+		var totalBill int
+		for detailsRows.Next() {
+			var detail BillDetail
+			err = detailsRows.Scan(
+				&detail.ID,
+				&detail.BillID,
+				&detail.ProductPrice,
+				&detail.Qty,
+				&detail.Product.Id,
+				&detail.Product.Name,
+				&detail.Product.Price,
+				&detail.Product.Unit,
+			)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to parse bill details", "details": err.Error()})
+				return
+			}
+			transaction.BillDetails = append(transaction.BillDetails, detail)
+			totalBill += detail.ProductPrice * detail.Qty
+		}
+		transaction.TotalBill = totalBill
+
+		transactions = append(transactions, transaction)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Transactions retrieved successfully",
+		"data":    transactions,
 	})
 }
